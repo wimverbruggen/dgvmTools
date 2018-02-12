@@ -10,7 +10,7 @@
 #'
 #' @return A sensitivity analysis?
 #' @export
-sensitivity.ED2 <- function(param.var, param.eval, site, type, path, verbose=FALSE){
+sensitivity.ED2 <- function(param.var, param.eval, site, type, path, years="all", verbose=FALSE){
 
   # List all directories starting with param.var in "path" and get the parameter value
   sensdirs <- list.dirs(path = path, full.names = TRUE, recursive = FALSE)
@@ -25,7 +25,7 @@ sensitivity.ED2 <- function(param.var, param.eval, site, type, path, verbose=FAL
     parval <- unlist(strsplit(d,split=paste0(param.var,"_")))[2] # watch out, this will only work if there's no other "param.val_" string in the path
 
     # Get the ED2 data
-    edout <- readVar.ED2(path=file.path(d),sites=site,type=type,vars=param.eval)
+    edout <- readVar.ED2(path=file.path(d),sites=site,type=type,vars=param.eval,yearlim=years)
 
     # Construct a sensitivity analysis object
     sensitivity[[paste(param.var,parval,sep="_")]] <- edout[[site]]
