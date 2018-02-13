@@ -2,14 +2,16 @@
 #'
 #' @param path.run Path to the LPJ-GUESS run, with all the output in a "output" subdirectory
 #' @param sites Sites we are interested in
+#' @param freq Frequency of the output. Possible values: day, year
 #' @param delete_nye [T/F] because there are some significant spikes on that day due to yearly allocation
 #' @return Dataframe with all output
 #'
 #' @export
-readOut.LPJG <- function(path.run,sites,delete_nye=FALSE){
+readOut.LPJG <- function(path.run,sites,freq="day",delete_nye=FALSE){
 
-  # TO DO
-  # - Choose a good standard output format for ED! Preferably in CF format or so.
+  # Input parameter control
+  acceptable_freqs <- c("day","year")
+  if(!freq %in% acceptable_freqs) stop("Frequency of output should be \"day\" or \"year\"")
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
   #                                                                                                 #
@@ -20,6 +22,8 @@ readOut.LPJG <- function(path.run,sites,delete_nye=FALSE){
 
   # Specify which datafiles we want to incorporate
   vars.daily  <- c("dmet","dflux","daily_aet")
+  vars.yearly <- c("aaet","lai")
+
 
   # The time and location related variables
   vars.postim <- c("Lon", "Lat", "Year", "Day")
@@ -66,30 +70,53 @@ readOut.LPJG <- function(path.run,sites,delete_nye=FALSE){
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
   ##
-  ## DAILY OUTPUT
+  ## Get output
   ##
 
   # Set up datalist
   lpjg.d <- list()
-  postim <- lpjg.output[[vars.daily[[1]]]][vars.postim]
+  lpjg.y <- list()
+
+  postim.d <- lpjg.output[[vars.daily[[1]]]] [c("Lon","Lat","Year","Day")]
+  postim.y <- lpjg.output[[vars.yearly[[1]]]][c("Lon","Lat","Year")]
+
   for(i in 1:length(gridlist$site)){
 
-    # Select datapoints corresponding to current site i
-    sel <- which(postim$Lon == gridlist$lon[i] & postim$Lat == gridlist$lat[i])
+    if(gridlist$site[i] %in% sites){
 
-    site <- gridlist$site[i]
-    lpjg.d[[site]] <- list()
+      # Select datapoints corresponding to current site i
+      sel.d <- which(postim.d$Lon == gridlist$lon[i] & postim.d$Lat == gridlist$lat[i])
+      sel.y <- which(postim.y$Lon == gridlist$lon[i] & postim.y$Lat == gridlist$lat[i])
 
-    # Set up POSIX
-    lpjg.d[[site]]$posix <- as.POSIXct(paste(postim$Year[sel],postim$Day[sel],sep="-"),format="%Y-%j",tz=siteinfo[[site]]$tz)
+      site <- gridlist$site[i]
+      lpjg.d[[site]] <- list()
+      lpjg.y[[site]] <- list()
 
-    # Fill up with the data of interest
-    for(vd in vars.daily){
-      vars <- names(lpjg.output[[vd]]); vars <- vars[!(vars %in% vars.postim)]
-      for(v in vars){
-        lpjg.d[[site]][[v]] <- lpjg.output[[vd]][[v]][sel]
+      # Set up POSIX
+      lpjg.d[[site]]$posix <- as.POSIXct(paste(postim.d$Year[sel.d],postim.d$Day[sel.d],sep="-"),format="%Y-%j",tz=siteinfo[[site]]$tz)
+      lpjg.y[[site]]$posix <- as.POSIXct(paste(postim.y$Year[sel.y],1,sep="-"),format="%Y-%j",tz=siteinfo[[site]]$tz)
+
+      # Fill up with data: days
+      for(vd in vars.daily){
+        vars <- names(lpjg.output[[vd]]); vars <- vars[!(vars %in% vars.postim)]
+        for(v in vars){
+          lpjg.d[[site]][[v]] <- lpjg.output[[vd]][[v]][sel.d]
+        }
       }
+
+      # Fill up with data: years
+      for(vy in vars.yearly){
+        pfts <- names(lpjg.output[[vy]]); pfts <- pfts[!(pfts %in% vars.postim)]
+        for(p in pfts){
+          lpjg.y[[site]][[vy]][[p]] <- lpjg.output[[vy]][[p]][sel.y]
+        }
+        lpjg.y[[site]][[vy]] <- t(matrix(unlist(lpjg.y[[site]][[vy]]),ncol=13))
+        rownames(lpjg.y[[site]][[vy]]) <- pfts
+        colnames(lpjg.y[[site]][[vy]]) <- unique(year(lpjg.y[[site]]$posix))
+      }
+
     }
+
   }
 
 
@@ -97,24 +124,18 @@ readOut.LPJG <- function(path.run,sites,delete_nye=FALSE){
   ## Rename variables
   ##
 
-  var.rename <- list( Rainfall = "rain.rate",
-                      Tair = "t.air",
-                      SolIrrInc = "swinc",
+  var.rename <- list( Rainfall = "rain",
+                      Tair = "air.temp",
+                      SolIrrInc = "rad.swinc",
                       mnee = "NEE",
                       mnpp = "NPP",
                       mgpp = "GPP",
                       mra  = "RA",
-                      rh  = "RH"
+                      rh  = "RH",
+                      aaet = "ET.pft",
+                      lai = "LAI.pft"
+
   )
-
-  ##
-  ## Select sites (maybe we should do this earlier..)
-  ##
-
-  for(s in names(lpjg.d)){
-    if(!s %in% sites) lpjg.d[[s]] <- NULL
-  }
-
 
   # Actual renaming
   for(s in sites){
@@ -122,6 +143,12 @@ readOut.LPJG <- function(path.run,sites,delete_nye=FALSE){
       if(v %in% names(var.rename)){
         lpjg.d[[s]][var.rename[[v]]] <- lpjg.d[[s]][v]
         lpjg.d[[s]][v] <- NULL
+      }
+    }
+    for(v in names(lpjg.y[[s]])){
+      if(v %in% names(var.rename)){
+        lpjg.y[[s]][var.rename[[v]]] <- lpjg.y[[s]][v]
+        lpjg.y[[s]][v] <- NULL
       }
     }
   }
@@ -156,9 +183,14 @@ readOut.LPJG <- function(path.run,sites,delete_nye=FALSE){
     lpjg.d[[s]]$rain.rate  <- lpjg.d[[s]]$rain.rate/sec_per_day
     attr(lpjg.d[[s]]$rain.rate,"Units") <- "mm s-1"
 
-    # Evapotranspiration
+    # Daily evapotranspiration
     lpjg.d[[s]]$ET <- lpjg.d[[s]]$ET/sec_per_day
     attr(lpjg.d[[s]]$ET,"Units") <- "mm s-1"
+
+    # Annual output > units not changed
+    attr(lpjg.y[[s]]$ET.pft, "Units") <- "mm year-1"
+    attr(lpjg.y[[s]]$LAI.pft,"Units") <- "m2 m-2"
+
   }
 
   ## -------------------------------------------------------------------------------------------------------------
@@ -177,6 +209,8 @@ readOut.LPJG <- function(path.run,sites,delete_nye=FALSE){
   }
 
 
-  return(lpjg.d)
+  if(freq=="day")  return(lpjg.d)
+  if(freq=="year") return(lpjg.y)
+
 
 }
