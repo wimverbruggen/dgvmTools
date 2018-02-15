@@ -179,9 +179,12 @@ readOut.LPJG <- function(path.run,sites,freq="day",delete_nye=FALSE){
     lpjg.d[[s]]$RH  <- -lpjg.d[[s]]$RH/sec_per_day
     attr(lpjg.d[[s]]$RH,"Units") <- "kgC m-2 s-1"
 
-    # Convert rain.rate to mm/sec
-    lpjg.d[[s]]$rain.rate  <- lpjg.d[[s]]$rain.rate/sec_per_day
-    attr(lpjg.d[[s]]$rain.rate,"Units") <- "mm s-1"
+    lpjg.d[[s]]$RE  <- lpjg.d[[s]]$RA + lpjg.d[[s]]$RH
+    attr(lpjg.d[[s]]$RE,"Units") <- "kgC m-2 s-1"
+
+    # Convert rain to mm/sec
+    lpjg.d[[s]]$rain  <- lpjg.d[[s]]$rain/sec_per_day
+    attr(lpjg.d[[s]]$rain,"Units") <- "mm s-1"
 
     # Daily evapotranspiration
     lpjg.d[[s]]$ET <- lpjg.d[[s]]$ET/sec_per_day

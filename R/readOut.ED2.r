@@ -55,7 +55,7 @@ readOut.ED2 <- function(path,sites,type,yearlim="all",variables="all",verbose=FA
                     stress.N = "MMEAN_FSN_PY",                    #
                     stress.M = "MMEAN_FSW_PY",                    #
                     stress.net = "MMEAN_FS_OPEN_PY",              #
-                    rain.rate="MMEAN_PCPG_PY",                    # [mm/s]
+                    rain="MMEAN_PCPG_PY",                    # [mm/s]
                     leaf.gs="MMEAN_LEAF_GSW_PY"                   # [kg/m2leaf/s]
     )
   }
@@ -65,6 +65,8 @@ readOut.ED2 <- function(path,sites,type,yearlim="all",variables="all",verbose=FA
     edvars <- list( NPP = "FMEAN_NPP_PY",                   # [kgC/m2/year]
                     NEE = "FMEAN_NEP_PY",                   # [kgC/m2/year]
                     GPP = "FMEAN_GPP_PY",                   # [kgC/m2/year]
+                    RH  = "FMEAN_RH_PY",                    # [kgC/m2/year]
+                    RA  = "FMEAN_PLRESP_PY",                # [kgC/m2/year]
                     LAI = "FMEAN_LAI_PY",                        # [m2leaf/m2]
                     LAI.cohort = "LAI_PY",                       # [m2leaf/m2]
 
@@ -89,7 +91,7 @@ readOut.ED2 <- function(path,sites,type,yearlim="all",variables="all",verbose=FA
                     stress.N = "FMEAN_FSN_PY",                   # Nitrogen stress factor
                     stress.M = "FMEAN_FSW_PY",                   # Moisture stress factor
                     stress.net = "FMEAN_FS_OPEN_PY",             # Net stress factor
-                    rain.rate="FMEAN_PCPG_PY",                   # [mm/s]
+                    rain="FMEAN_PCPG_PY",                   # [mm/s]
                     leaf.gs="FMEAN_LEAF_GSW_PY"                  # [kg/m2leaf/s]
     )
   }
@@ -106,7 +108,7 @@ readOut.ED2 <- function(path,sites,type,yearlim="all",variables="all",verbose=FA
                       stress.N = "DMEAN_FSN_PY",          # Nitrogen stress factor
                       stress.M = "DMEAN_FSW_PY",          # Moisture stress factor
                       stress.net = "DMEAN_FS_OPEN_PY",    # Net stress factor
-                      rain.rate="DMEAN_PCPG_PY",          # [mm/s]
+                      rain="DMEAN_PCPG_PY",          # [mm/s]
                       leaf.gs="DMEAN_LEAF_GSW_PY"         # [kg/m2leaf/s]
     )
   }
@@ -117,7 +119,7 @@ readOut.ED2 <- function(path,sites,type,yearlim="all",variables="all",verbose=FA
   }
 
   vars <- names(edvars)
-  vars.flux <- c("NPP","GPP","NEE")
+  vars.flux <- c("NPP","GPP","NEE","RA","RH","RE")
 
 
   # Time management tools
@@ -156,12 +158,14 @@ readOut.ED2 <- function(path,sites,type,yearlim="all",variables="all",verbose=FA
 
     for(f in 1:length(files.site)){
 
+      if(verbose) cat(" - Reading file ",files.site[f],"\n")
+
       # Save date info from filename
       ed[[s]]$year[f]  <- substr(files.site[f],ind+4,ind+7)
       ed[[s]]$month[f] <- substr(files.site[f],ind+9,ind+10)
       ed[[s]]$day[f]   <- substr(files.site[f],ind+12,ind+13)
 
-      if(verbose) cat("readOut.ED2 :: -- Reading year-month-day ",ed[[s]]$year[f],"-",ed[[s]]$month[f],"-",ed[[s]]$day[f],"\n")
+      #if(verbose) cat("readOut.ED2 :: -- Reading year-month-day ",ed[[s]]$year[f],"-",ed[[s]]$month[f],"-",ed[[s]]$day[f],"\n")
 
       # Read all vars of interest
       for(v in vars){
@@ -172,7 +176,6 @@ readOut.ED2 <- function(path,sites,type,yearlim="all",variables="all",verbose=FA
 
   }
 
-  if(verbose) cat("readOut.ED2 :: Done!\n")
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   #
   #  CONVERT DATES, VARS
@@ -213,7 +216,7 @@ readOut.ED2 <- function(path,sites,type,yearlim="all",variables="all",verbose=FA
     }
 
     ##
-    ## TOWER OUT <<<<<<<<<<<<<<,, something wrong here probably..
+    ## TOWER OUT
     ##
     if(type=="T"){
 
@@ -246,14 +249,52 @@ readOut.ED2 <- function(path,sites,type,yearlim="all",variables="all",verbose=FA
   #
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
+  if(verbose) cat("readOut.ED2 :: Deriving some variables: \n")
+
   # Calculate total soil carbon
   if(("soil.C.slow" %in% vars)&("soil.C.struct" %in% vars)&("soil.C.fast" %in% vars)) {
+      if(verbose) cat(" - soil.C.tot = soil.C.slow + soil.C.struct + soil.C.fast\n")
       for(s in sites)  ed[[s]]$soil.C.tot <- ed[[s]]$soil.C.slow + ed[[s]]$soil.C.struct + ed[[s]]$soil.C.fast
+      vars <- c(vars,"soil.C.tot")
+  }
+
+  # Calculate ET and LE
+  if(TRUE){
+    if(verbose) cat(" - ET = ground.h2o.evap + leaf.h2o.evap + wood.h2o.evap + leaf.h2o.transp\n")
+    if(verbose) cat(" - LE = ET * 2.45e6\n")
+    for(s in sites){
+
+      ed[[s]]$et <- ed[[s]]$ground.h2o.evap + ed[[s]]$leaf.h2o.evap + ed[[s]]$wood.h2o.evap + ed[[s]]$leaf.h2o.transp
+      attr(ed[[s]]$et,"Units") <- "kg m-2 s-1"
+
+      ed[[s]]$LE <- ed[[s]]$et*2.45*1000000
+      attr(ed[[s]]$LE,"Units") <- "W m-2"
     }
+  }
 
   # Calculate PFT totals of LAI and AGB
-  if("LAI.cohort" %in% vars) {for(s in sites)  ed[[s]]$LAI.pft <- apply(ed[[s]]$LAI.cohort,c(1,3),sum)}
-  if("AGB.cohort" %in% vars) {for(s in sites)  ed[[s]]$AGB.pft <- apply(ed[[s]]$AGB.cohort,c(1,3),sum)}
+  if("LAI.cohort" %in% vars) {
+    if(verbose) cat(" - LAI.pft = sum over PFTs in LAI.cohort\n")
+    for(s in sites)  ed[[s]]$LAI.pft <- apply(ed[[s]]$LAI.cohort,c(1,3),sum)
+    vars <- c(vars,"LAI.cohort")
+    }
+  if("AGB.cohort" %in% vars) {
+    if(verbose) cat(" - AGB.pft = sum over PFTs in AGB.cohort\n")
+    for(s in sites)  ed[[s]]$AGB.pft <- apply(ed[[s]]$AGB.cohort,c(1,3),sum)
+    vars <- c(vars,"AGB.cohort")
+    }
+
+  # Calculate ecosystem respiration (RE) from RH and RA + set conventions so they are negative
+  if("RA" %in% vars & "RH" %in% vars) {
+    if(verbose) cat(" - RE = RA + RH\n")
+    for(s in sites) {
+      ed[[s]]$RA <- -ed[[s]]$RA
+      ed[[s]]$RH <- -ed[[s]]$RH
+      ed[[s]]$RE <- ed[[s]]$RA + ed[[s]]$RH
+
+      }
+    vars <- c(vars,"RE")
+    }
 
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   #
@@ -261,6 +302,7 @@ readOut.ED2 <- function(path,sites,type,yearlim="all",variables="all",verbose=FA
   #
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
+  if(verbose) cat("readOut.ED2 :: Correcting units. ")
   for(s in sites){
     for(v in vars.flux){
       if(v %in% vars){
@@ -270,6 +312,7 @@ readOut.ED2 <- function(path,sites,type,yearlim="all",variables="all",verbose=FA
     }
   }
 
+  if(verbose) cat("Done!\n")
   # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   #
   #  SOME FINISHING TOUCHES
